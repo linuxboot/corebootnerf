@@ -24,17 +24,18 @@ var (
 	init=/init
 rootwait
 `
-	apt           = flag.Bool("apt", false, "apt-get all the things we need")
-	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
-	config        = flag.String("config", "CONFIG", "Linux config file")
-	skipkern      = flag.Bool("skipkern", false, "Don't build the kernel")
-	extra         = flag.String("extra", "", "Comma-separated list of extra packages to include")
-	kernelVersion = "v4.12.7"
-	workingDir    = ""
-	linuxVersion  = "linux-stable"
-	homeDir       = ""
-	threads       = runtime.NumCPU() + 2 // Number of threads to use when calling make.
-	packageList   = []string{
+	apt            = flag.Bool("apt", false, "apt-get all the things we need")
+	fetch          = flag.Bool("fetch", false, "Fetch all the things we need")
+	kernelConfig   = flag.String("kernelconfig", "CONFIG", "Linux config file")
+	corebootConfig = flag.String("corebootconfig", "COREBOOTCONFIG", "coreboot config file")
+	skipkern       = flag.Bool("skipkern", false, "Don't build the kernel")
+	extra          = flag.String("extra", "", "Comma-separated list of extra packages to include")
+	kernelVersion  = "v4.12.7"
+	workingDir     = ""
+	linuxVersion   = "linux-stable"
+	homeDir        = ""
+	threads        = runtime.NumCPU() + 2 // Number of threads to use when calling make.
+	packageList    = []string{
 		"bc",
 		"git",
 		"golang",
@@ -42,7 +43,7 @@ rootwait
 		"git-core",
 		"gitk",
 		"git-gui",
-		"subversion",
+		"iasl",
 		"curl",
 		"python2.7",
 		"libyaml-dev",
@@ -103,9 +104,35 @@ func kernelGet() error {
 	return nil
 }
 
+func corebootGet() error {
+	var args = []string{"https://coreboot.org/releases/coreboot-4.9.tar.xz"}
+	fmt.Printf("-------- Getting coreboot via wget %v\n", "https://coreboot.org/releases/coreboot-4.9.tar.xz")
+	cmd := exec.Command("wget", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("didn't wget coreboot %v", err)
+		return err
+	}
+	cmd = exec.Command("tar", "xvf", "coreboot-4.9.tar.xz")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("untar failed %v", err)
+		return err
+	}
+	cmd = exec.Command("make", "crossgcc-i386", "iasl")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-4.9"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("untar failed %v", err)
+		return err
+	}
+	return nil
+}
+
 func buildKernel() error {
-	if err := cp(*config, "linux-stable/.config"); err != nil {
-		fmt.Printf("copying %v to linux-stable/.config: %v", *config, err)
+	if err := cp(*kernelConfig, "linux-stable/.config"); err != nil {
+		fmt.Printf("copying %v to linux-stable/.config: %v", *kernelConfig, err)
+		return err
 	}
 
 	cmd := exec.Command("make", "--directory", "linux-stable", "-j"+strconv.Itoa(threads))
@@ -118,6 +145,30 @@ func buildKernel() error {
 		return err
 	}
 	if _, err := os.Stat(filepath.Join("linux-stable", "/arch/x86/boot/bzImage")); err != nil {
+		return err
+	}
+	fmt.Printf("bzImage created")
+	return nil
+}
+
+func buildCoreboot() error {
+	if err := cp(*corebootConfig, "coreboot-4.9/.config"); err != nil {
+		fmt.Printf("copying %v to linux-stable/.config: %v", *corebootConfig, err)
+		return err
+	}
+	if err := cp("linux-stable/arch/x86/boot/bzImage", "coreboot-4.9/bzImage"); err != nil {
+		fmt.Printf("copying %v to linux-stable/.config: %v", *corebootConfig, err)
+	}
+
+	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Env = append(os.Environ(), "ARCH=x86_64")
+	cmd.Dir = "coreboot-4.9"
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat("coreboot-4.9/build/coreboot.rom"); err != nil {
 		return err
 	}
 	fmt.Printf("bzImage created")
@@ -192,8 +243,10 @@ func allFunc() error {
 		{f: goGet, skip: *skipkern || !*fetch, ignore: false, n: "Get u-root source"},
 		{f: aptget, skip: !*apt, ignore: false, n: "apt get"},
 		{f: kernelGet, skip: *skipkern || !*fetch, ignore: false, n: "Git clone the kernel"},
+		{f: corebootGet, skip: *skipkern || !*fetch, ignore: false, n: "Git clone coreboot"},
 		{f: goBuildStatic, skip: *skipkern, ignore: false, n: "Build static initramfs"},
 		{f: buildKernel, skip: *skipkern, ignore: false, n: "build the kernel"},
+		{f: buildCoreboot, skip: *skipkern, ignore: false, n: "build coreboot"},
 	}
 
 	for _, c := range cmds {
