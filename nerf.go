@@ -24,18 +24,16 @@ var (
 	init=/init
 rootwait
 `
-	apt            = flag.Bool("apt", false, "apt-get all the things we need")
-	fetch          = flag.Bool("fetch", false, "Fetch all the things we need")
-	kernelConfig   = flag.String("kernelconfig", "CONFIG", "Linux config file")
-	corebootConfig = flag.String("corebootconfig", "COREBOOTCONFIG", "coreboot config file")
-	skipkern       = flag.Bool("skipkern", false, "Don't build the kernel")
-	extra          = flag.String("extra", "", "Comma-separated list of extra packages to include")
-	kernelVersion  = "v4.12.7"
-	workingDir     = ""
-	linuxVersion   = "linux-stable"
-	homeDir        = ""
-	threads        = runtime.NumCPU() + 2 // Number of threads to use when calling make.
-	packageList    = []string{
+	apt           = flag.Bool("apt", false, "apt-get all the things we need")
+	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
+	skipkern      = flag.Bool("skipkern", false, "Don't build the kernel")
+	extra         = flag.String("extra", "", "Comma-separated list of extra packages to include")
+	kernelVersion = "v4.12.7"
+	workingDir    = ""
+	linuxVersion  = "linux-stable"
+	homeDir       = ""
+	threads       = runtime.NumCPU() + 2 // Number of threads to use when calling make.
+	packageList   = []string{
 		"bc",
 		"git",
 		"golang",
@@ -119,7 +117,7 @@ func corebootGet() error {
 		fmt.Printf("untar failed %v", err)
 		return err
 	}
-	cmd = exec.Command("make", "crossgcc-i386", "iasl")
+	cmd = exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "iasl")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-4.9"
 	if err := cmd.Run(); err != nil {
@@ -130,8 +128,8 @@ func corebootGet() error {
 }
 
 func buildKernel() error {
-	if err := cp(*kernelConfig, "linux-stable/.config"); err != nil {
-		fmt.Printf("copying %v to linux-stable/.config: %v", *kernelConfig, err)
+	if err := ioutil.WriteFile("linux-stable/.config", []byte(linuxconfig), 0666); err != nil {
+		fmt.Printf("writing linux-stable/.config: %v", err)
 		return err
 	}
 
@@ -152,12 +150,12 @@ func buildKernel() error {
 }
 
 func buildCoreboot() error {
-	if err := cp(*corebootConfig, "coreboot-4.9/.config"); err != nil {
-		fmt.Printf("copying %v to linux-stable/.config: %v", *corebootConfig, err)
+	if err := ioutil.WriteFile("coreboot-4.9/.config", []byte(corebootconfig), 0666); err != nil {
+		fmt.Printf("writing corebootconfig: %v", err)
 		return err
 	}
 	if err := cp("linux-stable/arch/x86/boot/bzImage", "coreboot-4.9/bzImage"); err != nil {
-		fmt.Printf("copying %v to linux-stable/.config: %v", *corebootConfig, err)
+		fmt.Printf("copying %v to linux-stable/.config: %v", err)
 	}
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
