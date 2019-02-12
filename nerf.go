@@ -75,7 +75,7 @@ func goGet() error {
 
 func goBuildStatic() error {
 	oFile := filepath.Join(workingDir, "linux-stable", initramfs)
-	args := []string{"run", "github.com/u-root/u-root", "-o", oFile, "-build=bb", "core"}
+	args := []string{"run", "github.com/u-root/u-root", "-o", oFile, "-build=bb"}
 	cmd := exec.Command("go", append(args, staticCmdList...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
